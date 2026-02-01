@@ -115,6 +115,13 @@
   gap: 12px;
 }
 
+.panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .panel__label {
   margin: 0;
   font-size: 0.85rem;
@@ -184,6 +191,45 @@
   justify-content: space-between;
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.8);
+}
+
+.log-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.log-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.log-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.log-meta {
+  margin: 0;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.log-metrics {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .status {

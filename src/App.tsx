@@ -16,6 +16,16 @@ interface PreviewUrls {
   mobile: string
 }
 
+interface ProcessingLogEntry {
+  id: string
+  fileName: string
+  fileSize: number
+  durationMs: number
+  desktopSize: number
+  mobileSize: number
+  timestamp: number
+}
+
 const VIEW_OPTIONS: Array<{ value: ViewMode; label: string }> = [
   { value: 'full', label: 'Full Screen' },
   { value: 'quarter', label: 'Quarter Screen' },
@@ -38,12 +48,32 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('full')
   const [optimized, setOptimized] = useState<OptimizedImages | null>(null)
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls | null>(null)
+  const [logs, setLogs] = useState<ProcessingLogEntry[]>(() => {
+    try {
+      const stored = localStorage.getItem('background-optimizer:logs')
+      if (stored) {
+        return JSON.parse(stored) as ProcessingLogEntry[]
+      }
+    } catch {
+      return []
+    }
+    return []
+  })
   const [status, setStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>(
     'idle'
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const requestIdRef = useRef(0)
   const defaultImageName = 'IMG_0701.HEIC'
+  const logStorageKey = 'background-optimizer:logs'
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(logStorageKey, JSON.stringify(logs))
+    } catch {
+      // Storage might be unavailable (private mode / blocked), keep in-memory logs.
+    }
+  }, [logs])
 
   useEffect(() => {
     return () => {
@@ -102,6 +132,18 @@ function App() {
         setOptimized(processed)
         setPreviewUrls({ desktop: desktopUrl, mobile: mobileUrl })
         setStatus('ready')
+
+        const entry: ProcessingLogEntry = {
+          id: crypto.randomUUID(),
+          fileName: file.name,
+          fileSize: file.size,
+          durationMs: processed.durationMs,
+          desktopSize: processed.desktop.size,
+          mobileSize: processed.mobile.size,
+          timestamp: Date.now(),
+        }
+
+        setLogs((current) => [entry, ...current].slice(0, 20))
 
         if (file.name.toLowerCase() === defaultImageName.toLowerCase()) {
           console.debug('imageProcessor: default file duration ms', processed.durationMs)
@@ -216,6 +258,42 @@ function App() {
                 <span>Processing time</span>
                 <span>{optimized.durationMs.toFixed(1)} ms</span>
               </li>
+            </ul>
+          )}
+        </div>
+
+        <div className="panel__section panel__section--logs">
+          <div className="panel__row">
+            <p className="panel__label">Processing log</p>
+            <button
+              type="button"
+              className="toggle"
+              onClick={() => setLogs([])}
+              disabled={logs.length === 0}
+            >
+              Clear
+            </button>
+          </div>
+          {logs.length === 0 ? (
+            <p className="panel__hint">No entries yet.</p>
+          ) : (
+            <ul className="log-list">
+              {logs.map((entry) => (
+                <li key={entry.id}>
+                  <div>
+                    <p className="log-title">{entry.fileName}</p>
+                    <p className="log-meta">
+                      {new Date(entry.timestamp).toLocaleTimeString()} •{' '}
+                      {formatBytes(entry.fileSize)}
+                    </p>
+                  </div>
+                  <div className="log-metrics">
+                    <span>{entry.durationMs.toFixed(1)} ms</span>
+                    <span>{formatBytes(entry.desktopSize)}</span>
+                    <span>{formatBytes(entry.mobileSize)}</span>
+                  </div>
+                </li>
+              ))}
             </ul>
           )}
         </div>
