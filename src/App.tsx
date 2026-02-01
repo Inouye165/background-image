@@ -12,7 +12,6 @@ import { processImage, type OptimizedImages } from './utils/imageProcessor'
 type ViewMode = 'full' | 'quarter' | 'mobile'
 
 interface PreviewUrls {
-  original: string
   desktop: string
   mobile: string
 }
@@ -47,7 +46,6 @@ function App() {
   useEffect(() => {
     return () => {
       if (previewUrls) {
-        URL.revokeObjectURL(previewUrls.original)
         URL.revokeObjectURL(previewUrls.desktop)
         URL.revokeObjectURL(previewUrls.mobile)
       }
@@ -89,13 +87,10 @@ function App() {
       setStatus('processing')
       setErrorMessage(null)
 
-      const originalUrl = URL.createObjectURL(file)
-
       try {
         const processed = await processImage(file)
 
         if (requestIdRef.current !== requestId) {
-          URL.revokeObjectURL(originalUrl)
           return
         }
 
@@ -103,18 +98,16 @@ function App() {
         const mobileUrl = URL.createObjectURL(processed.mobile.blob)
 
         setOptimized(processed)
-        setPreviewUrls({ original: originalUrl, desktop: desktopUrl, mobile: mobileUrl })
+        setPreviewUrls({ desktop: desktopUrl, mobile: mobileUrl })
         setStatus('ready')
       } catch (error) {
         if (requestIdRef.current !== requestId) {
-          URL.revokeObjectURL(originalUrl)
           return
         }
         const message =
           error instanceof Error ? error.message : 'Unable to process the selected image.'
         setErrorMessage(message)
         setStatus('error')
-        URL.revokeObjectURL(originalUrl)
       }
     },
     []
@@ -155,7 +148,7 @@ function App() {
             <input
               id="background-file"
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               onChange={handleFileChange}
             />
           </label>

@@ -6,6 +6,8 @@ interface CanvasContext {
     dWidth: number,
     dHeight: number
   ) => void
+  imageSmoothingEnabled?: boolean
+  imageSmoothingQuality?: 'low' | 'medium' | 'high'
 }
 
 interface CanvasSurface {
@@ -62,6 +64,8 @@ type HeicConverter = (options: {
   toType: string
   quality?: number
 }) => Promise<Blob | Blob[]>
+
+let heicConverterPromise: Promise<HeicConverter> | null = null
 
 const DEFAULT_OPTIONS: ImageProcessingOptions = {
   desktop: { width: 1920, quality: 0.8 },
@@ -131,13 +135,18 @@ const getImageFromBlob = async (blob: Blob): Promise<LoadedImage> => {
 }
 
 const loadHeicConverter = async (): Promise<HeicConverter> => {
-  const module = await import('heic2any')
-  return module.default
+  if (!heicConverterPromise) {
+    heicConverterPromise = import('heic2any').then((module) => module.default)
+  }
+  return heicConverterPromise
 }
 
 const convertHeicToBlob = async (file: File): Promise<Blob> => {
+  const startTime = performance.now()
   const converter = await loadHeicConverter()
   const result = await converter({ blob: file, toType: 'image/jpeg', quality: 0.92 })
+  const durationMs = performance.now() - startTime
+  console.debug('imageProcessor: heic conversion ms', durationMs)
   if (Array.isArray(result)) {
     const [first] = result
     if (!first) {
@@ -178,6 +187,15 @@ const toWebPBlob = (
     )
   })
 
+const applySmoothing = (context: CanvasContext) => {
+  if (typeof context.imageSmoothingEnabled === 'boolean') {
+    context.imageSmoothingEnabled = true
+  }
+  if (context.imageSmoothingQuality) {
+    context.imageSmoothingQuality = 'high'
+  }
+}
+
 const renderVariant = async (
   image: LoadedImage,
   targetWidth: number,
@@ -203,6 +221,8 @@ const renderVariant = async (
   if (!context) {
     throw new Error('Canvas context is unavailable.')
   }
+
+  applySmoothing(context)
 
   context.drawImage(image.source, 0, 0, clampedWidth, scaledHeight)
 
@@ -231,18 +251,20 @@ export const processImage = async (
 
   const image = await resolvedDeps.loadImage(file)
 
-  const desktop = await renderVariant(
-    image,
-    mergedOptions.desktop.width,
-    mergedOptions.desktop.quality,
-    resolvedDeps
-  )
-  const mobile = await renderVariant(
-    image,
-    mergedOptions.mobile.width,
-    mergedOptions.mobile.quality,
-    resolvedDeps
-  )
+  const [desktop, mobile] = await Promise.all([
+    renderVariant(
+      image,
+      mergedOptions.desktop.width,
+      mergedOptions.desktop.quality,
+      resolvedDeps
+    ),
+    renderVariant(
+      image,
+      mergedOptions.mobile.width,
+      mergedOptions.mobile.quality,
+      resolvedDeps
+    ),
+  ])
 
   const durationMs = performance.now() - startTime
 
