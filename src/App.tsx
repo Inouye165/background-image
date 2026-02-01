@@ -71,6 +71,18 @@ function App() {
         return
       }
 
+      if (!file.type.startsWith('image/')) {
+        setErrorMessage('Unsupported file type. Please choose an image file.')
+        setStatus('error')
+        return
+      }
+
+      if (file.type === 'image/heic' || file.type === 'image/heif') {
+        setErrorMessage('HEIC images are not supported in this browser.')
+        setStatus('error')
+        return
+      }
+
       const requestId = requestIdRef.current + 1
       requestIdRef.current = requestId
       setStatus('processing')

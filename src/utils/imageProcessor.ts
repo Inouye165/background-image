@@ -17,7 +17,7 @@ interface CanvasSurface {
 
 export interface ImageProcessorDeps {
   createCanvas: () => CanvasSurface
-  loadImage: (file: File) => Promise<HTMLImageElement>
+  loadImage: (file: File) => Promise<LoadedImage>
 }
 
 export interface ImageVariantOptions {
@@ -51,6 +51,12 @@ export interface OptimizedImages {
   durationMs: number
 }
 
+interface LoadedImage {
+  source: CanvasImageSource
+  width: number
+  height: number
+}
+
 const DEFAULT_OPTIONS: ImageProcessingOptions = {
   desktop: { width: 1920, quality: 0.8 },
   mobile: { width: 720, quality: 0.7 },
@@ -58,20 +64,57 @@ const DEFAULT_OPTIONS: ImageProcessingOptions = {
 
 const createDefaultDeps = (): ImageProcessorDeps => ({
   createCanvas: () => document.createElement('canvas'),
-  loadImage: (file: File) =>
-    new Promise((resolve, reject) => {
+  loadImage: async (file: File) => {
+    if (typeof createImageBitmap === 'function') {
+      try {
+        const bitmap = await createImageBitmap(file)
+        return { source: bitmap, width: bitmap.width, height: bitmap.height }
+      } catch (error) {
+        console.debug('imageProcessor: createImageBitmap failed', error)
+      }
+    }
+
+    return new Promise((resolve, reject) => {
       const objectUrl = URL.createObjectURL(file)
       const image = new Image()
-      image.onload = () => {
+      let settled = false
+
+      const cleanup = () => {
         URL.revokeObjectURL(objectUrl)
-        resolve(image)
       }
-      image.onerror = () => {
-        URL.revokeObjectURL(objectUrl)
+
+      const resolveImage = () => {
+        if (settled) {
+          return
+        }
+        settled = true
+        cleanup()
+        const width = image.naturalWidth > 0 ? image.naturalWidth : image.width
+        const height = image.naturalHeight > 0 ? image.naturalHeight : image.height
+        resolve({ source: image, width, height })
+      }
+
+      const rejectImage = () => {
+        if (settled) {
+          return
+        }
+        settled = true
+        cleanup()
         reject(new Error('Unable to load image for processing.'))
       }
+
+      image.onload = resolveImage
+      image.onerror = rejectImage
       image.src = objectUrl
-    }),
+
+      if ('decode' in image) {
+        image
+          .decode()
+          .then(resolveImage)
+          .catch(rejectImage)
+      }
+    })
+  },
 })
 
 const toWebPBlob = (
@@ -93,13 +136,13 @@ const toWebPBlob = (
   })
 
 const renderVariant = async (
-  image: HTMLImageElement,
+  image: LoadedImage,
   targetWidth: number,
   quality: number,
   deps: ImageProcessorDeps
 ): Promise<OptimizedVariant> => {
-  const sourceWidth = image.naturalWidth > 0 ? image.naturalWidth : image.width
-  const sourceHeight = image.naturalHeight > 0 ? image.naturalHeight : image.height
+  const sourceWidth = image.width
+  const sourceHeight = image.height
 
   if (sourceWidth === 0 || sourceHeight === 0) {
     throw new Error('Source image has invalid dimensions.')
@@ -118,7 +161,7 @@ const renderVariant = async (
     throw new Error('Canvas context is unavailable.')
   }
 
-  context.drawImage(image, 0, 0, clampedWidth, scaledHeight)
+  context.drawImage(image.source, 0, 0, clampedWidth, scaledHeight)
 
   const blob = await toWebPBlob(canvas, quality)
 
@@ -169,8 +212,8 @@ export const processImage = async (
     desktop,
     mobile,
     original: {
-      width: image.naturalWidth > 0 ? image.naturalWidth : image.width,
-      height: image.naturalHeight > 0 ? image.naturalHeight : image.height,
+      width: image.width,
+      height: image.height,
       size: file.size,
       name: file.name,
       type: file.type,

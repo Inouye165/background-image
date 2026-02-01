@@ -33,15 +33,13 @@ describe('processImage', () => {
       }
     }
 
-    const image = new Image()
-    Object.defineProperty(image, 'naturalWidth', { value: 4000 })
-    Object.defineProperty(image, 'naturalHeight', { value: 2000 })
-    image.width = 4000
-    image.height = 2000
-
     const deps: ImageProcessorDeps = {
       createCanvas,
-      loadImage: async () => image,
+      loadImage: async () => ({
+        source: new Image(),
+        width: 4000,
+        height: 2000,
+      }),
     }
 
     const file = new File([new Uint8Array(1024)], 'sample.jpg', {
