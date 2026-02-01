@@ -3,13 +3,16 @@ import { processImage, type ImageProcessorDeps } from './imageProcessor'
 
 describe('processImage', () => {
   it('creates desktop and mobile variants with expected sizing', async () => {
-    const blobSizes = [5120, 2048]
+    const blobSizeByWidth = new Map<number, number>([
+      [1920, 5120],
+      [720, 2048],
+    ])
     const canvases: Array<{ width: number; height: number }> = []
+    const drawCalls: Array<{ width: number; height: number }> = []
 
     const createCanvas = () => {
       const state = { width: 0, height: 0 }
       canvases.push(state)
-      const size = blobSizes[canvases.length - 1]
 
       return {
         get width() {
@@ -25,9 +28,12 @@ describe('processImage', () => {
           state.height = value
         },
         getContext: () => ({
-          drawImage: () => undefined,
+          drawImage: () => {
+            drawCalls.push({ width: state.width, height: state.height })
+          },
         }),
         toBlob: (callback: (blob: Blob | null) => void, type: string) => {
+          const size = blobSizeByWidth.get(state.width) ?? 1024
           callback(new Blob([new Uint8Array(size)], { type }))
         },
       }
@@ -52,11 +58,10 @@ describe('processImage', () => {
     expect(result.desktop.height).toBe(960)
     expect(result.mobile.width).toBe(720)
     expect(result.mobile.height).toBe(360)
-    expect(result.desktop.size).toBe(blobSizes[0])
-    expect(result.mobile.size).toBe(blobSizes[1])
-    expect(canvases[0].width).toBe(1920)
-    expect(canvases[0].height).toBe(960)
-    expect(canvases[1].width).toBe(720)
-    expect(canvases[1].height).toBe(360)
+    expect(result.desktop.size).toBe(5120)
+    expect(result.mobile.size).toBe(2048)
+    expect(drawCalls.some((call) => call.width === 1920)).toBe(true)
+    expect(drawCalls.some((call) => call.width === 720)).toBe(true)
+    expect(drawCalls.length).toBeGreaterThanOrEqual(4)
   })
 })
