@@ -1,3 +1,5 @@
+import { isHeicFile } from './fileTypes'
+
 interface CanvasContext {
   drawImage: (
     image: CanvasImageSource,
@@ -70,16 +72,6 @@ let heicConverterPromise: Promise<HeicConverter> | null = null
 const DEFAULT_OPTIONS: ImageProcessingOptions = {
   desktop: { width: 1920, quality: 0.8 },
   mobile: { width: 720, quality: 0.7 },
-}
-
-const isHeicFile = (file: File): boolean => {
-  const lowerName = file.name.toLowerCase()
-  return (
-    file.type === 'image/heic' ||
-    file.type === 'image/heif' ||
-    lowerName.endsWith('.heic') ||
-    lowerName.endsWith('.heif')
-  )
 }
 
 const getImageFromBlob = async (blob: Blob): Promise<LoadedImage> => {
@@ -196,6 +188,27 @@ const applySmoothing = (context: CanvasContext) => {
   }
 }
 
+const drawToCanvas = (
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  deps: ImageProcessorDeps
+): CanvasSurface => {
+  const canvas = deps.createCanvas()
+  canvas.width = width
+  canvas.height = height
+
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('Canvas context is unavailable.')
+  }
+
+  applySmoothing(context)
+  context.drawImage(source, 0, 0, width, height)
+
+  return canvas
+}
+
 const renderVariant = async (
   image: LoadedImage,
   targetWidth: number,
@@ -213,20 +226,30 @@ const renderVariant = async (
   const scale = clampedWidth / sourceWidth
   const scaledHeight = Math.round(sourceHeight * scale)
 
-  const canvas = deps.createCanvas()
-  canvas.width = clampedWidth
-  canvas.height = scaledHeight
+  const scratchCanvases: CanvasSurface[] = []
+  let currentSource: CanvasImageSource = image.source
+  let currentWidth = sourceWidth
+  let currentHeight = sourceHeight
 
-  const context = canvas.getContext('2d')
-  if (!context) {
-    throw new Error('Canvas context is unavailable.')
+  while (currentWidth * 0.5 > clampedWidth) {
+    const nextWidth = Math.max(clampedWidth, Math.floor(currentWidth * 0.5))
+    const nextHeight = Math.round((currentHeight * nextWidth) / currentWidth)
+    const stepped = drawToCanvas(currentSource, nextWidth, nextHeight, deps)
+    scratchCanvases.push(stepped)
+    currentSource = stepped
+    currentWidth = nextWidth
+    currentHeight = nextHeight
   }
 
-  applySmoothing(context)
+  const finalCanvas = drawToCanvas(currentSource, clampedWidth, scaledHeight, deps)
+  const blob = await toWebPBlob(finalCanvas, quality)
 
-  context.drawImage(image.source, 0, 0, clampedWidth, scaledHeight)
-
-  const blob = await toWebPBlob(canvas, quality)
+  finalCanvas.width = 0
+  finalCanvas.height = 0
+  scratchCanvases.forEach((canvas) => {
+    canvas.width = 0
+    canvas.height = 0
+  })
 
   return {
     blob,
