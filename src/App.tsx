@@ -71,14 +71,15 @@ function App() {
         return
       }
 
-      if (!file.type.startsWith('image/')) {
-        setErrorMessage('Unsupported file type. Please choose an image file.')
-        setStatus('error')
-        return
-      }
+      const lowerName = file.name.toLowerCase()
+      const isHeic =
+        file.type === 'image/heic' ||
+        file.type === 'image/heif' ||
+        lowerName.endsWith('.heic') ||
+        lowerName.endsWith('.heif')
 
-      if (file.type === 'image/heic' || file.type === 'image/heif') {
-        setErrorMessage('HEIC images are not supported in this browser.')
+      if (!file.type.startsWith('image/') && !isHeic) {
+        setErrorMessage('Unsupported file type. Please choose an image file.')
         setStatus('error')
         return
       }

@@ -57,63 +57,106 @@ interface LoadedImage {
   height: number
 }
 
+type HeicConverter = (options: {
+  blob: Blob
+  toType: string
+  quality?: number
+}) => Promise<Blob | Blob[]>
+
 const DEFAULT_OPTIONS: ImageProcessingOptions = {
   desktop: { width: 1920, quality: 0.8 },
   mobile: { width: 720, quality: 0.7 },
 }
 
+const isHeicFile = (file: File): boolean => {
+  const lowerName = file.name.toLowerCase()
+  return (
+    file.type === 'image/heic' ||
+    file.type === 'image/heif' ||
+    lowerName.endsWith('.heic') ||
+    lowerName.endsWith('.heif')
+  )
+}
+
+const getImageFromBlob = async (blob: Blob): Promise<LoadedImage> => {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(blob)
+      return { source: bitmap, width: bitmap.width, height: bitmap.height }
+    } catch (error) {
+      console.debug('imageProcessor: createImageBitmap failed', error)
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(blob)
+    const image = new Image()
+    let settled = false
+
+    const cleanup = () => {
+      URL.revokeObjectURL(objectUrl)
+    }
+
+    const resolveImage = () => {
+      if (settled) {
+        return
+      }
+      settled = true
+      cleanup()
+      const width = image.naturalWidth > 0 ? image.naturalWidth : image.width
+      const height = image.naturalHeight > 0 ? image.naturalHeight : image.height
+      resolve({ source: image, width, height })
+    }
+
+    const rejectImage = () => {
+      if (settled) {
+        return
+      }
+      settled = true
+      cleanup()
+      reject(new Error('Unable to load image for processing.'))
+    }
+
+    image.onload = resolveImage
+    image.onerror = rejectImage
+    image.src = objectUrl
+
+    if ('decode' in image) {
+      image
+        .decode()
+        .then(resolveImage)
+        .catch(rejectImage)
+    }
+  })
+}
+
+const loadHeicConverter = async (): Promise<HeicConverter> => {
+  const module = await import('heic2any')
+  return module.default
+}
+
+const convertHeicToBlob = async (file: File): Promise<Blob> => {
+  const converter = await loadHeicConverter()
+  const result = await converter({ blob: file, toType: 'image/jpeg', quality: 0.92 })
+  if (Array.isArray(result)) {
+    const [first] = result
+    if (!first) {
+      throw new Error('HEIC conversion failed.')
+    }
+    return first
+  }
+  return result
+}
+
 const createDefaultDeps = (): ImageProcessorDeps => ({
   createCanvas: () => document.createElement('canvas'),
   loadImage: async (file: File) => {
-    if (typeof createImageBitmap === 'function') {
-      try {
-        const bitmap = await createImageBitmap(file)
-        return { source: bitmap, width: bitmap.width, height: bitmap.height }
-      } catch (error) {
-        console.debug('imageProcessor: createImageBitmap failed', error)
-      }
+    if (isHeicFile(file)) {
+      const converted = await convertHeicToBlob(file)
+      return getImageFromBlob(converted)
     }
 
-    return new Promise((resolve, reject) => {
-      const objectUrl = URL.createObjectURL(file)
-      const image = new Image()
-      let settled = false
-
-      const cleanup = () => {
-        URL.revokeObjectURL(objectUrl)
-      }
-
-      const resolveImage = () => {
-        if (settled) {
-          return
-        }
-        settled = true
-        cleanup()
-        const width = image.naturalWidth > 0 ? image.naturalWidth : image.width
-        const height = image.naturalHeight > 0 ? image.naturalHeight : image.height
-        resolve({ source: image, width, height })
-      }
-
-      const rejectImage = () => {
-        if (settled) {
-          return
-        }
-        settled = true
-        cleanup()
-        reject(new Error('Unable to load image for processing.'))
-      }
-
-      image.onload = resolveImage
-      image.onerror = rejectImage
-      image.src = objectUrl
-
-      if ('decode' in image) {
-        image
-          .decode()
-          .then(resolveImage)
-          .catch(rejectImage)
-      }
-    })
+    return getImageFromBlob(file)
   },
 })
 
