@@ -34,6 +34,7 @@ const formatBytes = (value: number): string => {
 }
 
 function App() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('full')
   const [optimized, setOptimized] = useState<OptimizedImages | null>(null)
   const [previewUrls, setPreviewUrls] = useState<PreviewUrls | null>(null)
@@ -42,6 +43,7 @@ function App() {
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const requestIdRef = useRef(0)
+  const defaultImageName = 'IMG_0701.HEIC'
 
   useEffect(() => {
     return () => {
@@ -100,6 +102,10 @@ function App() {
         setOptimized(processed)
         setPreviewUrls({ desktop: desktopUrl, mobile: mobileUrl })
         setStatus('ready')
+
+        if (file.name.toLowerCase() === defaultImageName.toLowerCase()) {
+          console.debug('imageProcessor: default file duration ms', processed.durationMs)
+        }
       } catch (error) {
         if (requestIdRef.current !== requestId) {
           return
@@ -150,8 +156,17 @@ function App() {
               type="file"
               accept="image/*,.heic,.heif"
               onChange={handleFileChange}
+              ref={fileInputRef}
             />
           </label>
+          <button
+            type="button"
+            className="toggle"
+            onClick={() => fileInputRef.current?.click()}
+            autoFocus
+          >
+            Use default: {defaultImageName}
+          </button>
           <p className="panel__hint">
             Recommended: high-resolution JPG or PNG for best WebP compression.
           </p>
